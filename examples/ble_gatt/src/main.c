@@ -12,6 +12,7 @@ LOG_MODULE_REGISTER(main);
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/drivers/gpio.h>
+#include <stdio.h>
 
 #include <pouch/pouch.h>
 #include <pouch/events.h>
@@ -32,6 +33,9 @@ LOG_MODULE_REGISTER(main);
 #endif
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios, {});
+static const struct gpio_dt_spec water_detect = GPIO_DT_SPEC_GET_OR(DT_ALIAS(water_detect), gpios, {});
+
+static bool last_water_state = false;
 
 static struct
 {
@@ -103,10 +107,17 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
 {
     if (POUCH_EVENT_SESSION_START == event)
     {
+        char water_json[64];
+        bool water_detected = last_water_state;
+        
+        snprintf(water_json, sizeof(water_json), 
+                 "{\"water\":\"%s\"}", 
+                 water_detected ? "present" : "absent");
+
         pouch_uplink_entry_write(".s/sensor",
                                  POUCH_CONTENT_TYPE_JSON,
-                                 "{\"temp\":22}",
-                                 sizeof("{\"temp\":22}") - 1,
+                                 water_json,
+                                 strlen(water_json),
                                  K_FOREVER);
 
         golioth_sync_to_cloud();
@@ -135,6 +146,47 @@ static int led_setting_cb(bool new_value)
 }
 
 GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
+
+static void water_sensor_thread(void *arg1, void *arg2, void *arg3)
+{
+    ARG_UNUSED(arg1);
+    ARG_UNUSED(arg2);
+    ARG_UNUSED(arg3);
+
+    if (!device_is_ready(water_detect.port))
+    {
+        LOG_ERR("Water sensor GPIO not ready");
+        return;
+    }
+
+    int ret = gpio_pin_configure_dt(&water_detect, GPIO_INPUT);
+    if (ret < 0)
+    {
+        LOG_ERR("Failed to configure water sensor GPIO (err %d)", ret);
+        return;
+    }
+
+    LOG_INF("Water sensor monitoring started on P0.29 (D3)");
+
+    while (1)
+    {
+        int val = gpio_pin_get_dt(&water_detect);
+        bool water_detected = (val == 1);
+
+        if (water_detected != last_water_state)
+        {
+            last_water_state = water_detected;
+            LOG_INF("Water state changed: %s", water_detected ? "PRESENT" : "ABSENT");
+            
+            // Request sync to update cloud
+            k_work_schedule(&sync_request_work, K_NO_WAIT);
+        }
+
+        k_sleep(K_MSEC(500)); // Check every 500ms
+    }
+}
+
+K_THREAD_DEFINE(water_sensor_tid, 1024, water_sensor_thread, NULL, NULL, NULL, 7, 0, 0);
 
 int main(void)
 {
