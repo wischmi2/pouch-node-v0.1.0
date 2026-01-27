@@ -138,6 +138,23 @@ GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
 
 int main(void)
 {
+    // Early LED blink to confirm boot
+    if (DT_HAS_ALIAS(led0))
+    {
+        int err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        if (err == 0)
+        {
+            // Blink 3 times fast to show we're alive
+            for (int i = 0; i < 3; i++)
+            {
+                gpio_pin_set_dt(&led, 1);
+                k_msleep(100);
+                gpio_pin_set_dt(&led, 0);
+                k_msleep(100);
+            }
+        }
+    }
+
     LOG_INF("Pouch SDK Version: " STRINGIFY(APP_BUILD_VERSION));
     LOG_INF("Pouch Protocol Version: %d", POUCH_VERSION);
     LOG_INF("Pouch BLE Transport Protocol Version: %d", GOLIOTH_BLE_GATT_VERSION);
