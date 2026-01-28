@@ -24,6 +24,18 @@
 			block-cycles = <512>;
 		};
 	};
+
+	water_sensor {
+		compatible = "gpio-keys";
+		water_detect: water_detect {
+			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+			label = "Water Detect INT";
+		};
+	};
+
+	aliases {
+		water-detect = &water_detect;
+	};
 };
 
 &flash0 {
