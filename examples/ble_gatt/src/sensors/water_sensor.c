@@ -26,14 +26,11 @@ static void water_report_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(water_report_work, water_report_work_handler);
 
-static void water_report_work_handler(struct k_work *work)
+static void water_report_internal(void)
 {
-    ARG_UNUSED(work);
-
     if (!water_detect.port || !device_is_ready(water_detect.port))
     {
         LOG_WRN("Water sensor GPIO port not ready");
-        k_work_schedule(&water_report_work, K_SECONDS(WATER_REPORT_PERIOD_S));
         return;
     }
 
@@ -41,7 +38,6 @@ static void water_report_work_handler(struct k_work *work)
     if (val < 0)
     {
         LOG_WRN("Water sensor read failed (err %d)", val);
-        k_work_schedule(&water_report_work, K_SECONDS(WATER_REPORT_PERIOD_S));
         return;
     }
 
@@ -77,7 +73,13 @@ static void water_report_work_handler(struct k_work *work)
             LOG_INF("Water state reported to Pouch: %s", water_detected ? "WET" : "DRY");
         }
     }
+}
 
+static void water_report_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    water_report_internal();
     k_work_schedule(&water_report_work, K_SECONDS(WATER_REPORT_PERIOD_S));
 }
 
@@ -125,8 +127,8 @@ int water_sensor_init(void)
 void water_sensor_pouch_session_start(void)
 {
     pouch_session_active = true;
-    /* Report current state when a session comes up */
-    k_work_submit(&water_report_work.work);
+    /* Report current state immediately when a session comes up */
+    water_report_internal();
 }
 
 void water_sensor_pouch_session_end(void)
