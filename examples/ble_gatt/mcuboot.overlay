@@ -1,0 +1,65 @@
+/*
+ * MCUboot bootloader device tree overlay for xiao_ble
+ * MCUboot runs from 0x0, app from 0xC000
+ */
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+		zephyr,console = &uart0;
+		nordic,pm-ext-flash = &p25q16h;
+	};
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+	pinctrl-1 = <&uart0_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+&flash0 {
+	/delete-node/ partitions;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x00000000 0x0000c000>;
+		};
+		slot0_partition: partition@c000 {
+			label = "image-0";
+			reg = <0x0000c000 0x000ec000>;
+		};
+		littlefs_partition: partition@fa000 {
+			label = "littlefs_storage";
+			reg = <0x000fa000 0x00006000>;
+		};
+	};
+};
+
+&p25q16h {
+	status = "okay";
+	/delete-property/ zephyr,flash-res-name;
+
+	/delete-node/ partitions;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		slot1_partition: partition@0 {
+			label = "image-1";
+			reg = <0x00000000 0x000ee000>;
+		};
+		storage_partition: partition@ee000 {
+			label = "storage";
+			reg = <0x000ee000 0x00112000>;
+		};
+	};
+};

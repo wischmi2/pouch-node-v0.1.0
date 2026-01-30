@@ -8,6 +8,7 @@
 LOG_MODULE_REGISTER(main);
 
 #include "credentials.h"
+#include "sensors/sensor.h"
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -56,6 +57,10 @@ static struct bt_data sd[] = {
     BT_DATA(BT_DATA_SVC_DATA128, &service_data, sizeof(service_data)),
 };
 
+/**
+ * Bluetooth connection established callback.
+ * Called when a BLE central (gateway) connects to this peripheral node.
+ */
 static void connected(struct bt_conn *conn, uint8_t err)
 {
     if (err)
@@ -68,6 +73,10 @@ static void connected(struct bt_conn *conn, uint8_t err)
     }
 }
 
+/**
+ * Work handler that restarts BLE advertising after disconnect.
+ * Delayed by 1 second to allow clean disconnect processing.
+ */
 void disconnect_work_handler(struct k_work *work)
 {
     int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
@@ -79,6 +88,10 @@ void disconnect_work_handler(struct k_work *work)
 
 K_WORK_DELAYABLE_DEFINE(disconnect_work, disconnect_work_handler);
 
+/**
+ * Bluetooth disconnection callback.
+ * Schedules work to restart advertising so gateway can reconnect.
+ */
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     LOG_DBG("Disconnected (reason 0x%02x)", reason);
@@ -91,6 +104,10 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
     .disconnected = disconnected,
 };
 
+/**
+ * Work handler that sets the "sync requested" flag in BLE advertising data.
+ * Signals to gateway that node has data ready to upload.
+ */
 void sync_request_work_handler(struct k_work *work)
 {
     service_data.data.flags = 0x01;
@@ -99,21 +116,25 @@ void sync_request_work_handler(struct k_work *work)
 
 K_WORK_DELAYABLE_DEFINE(sync_request_work, sync_request_work_handler);
 
+/**
+ * Handles Pouch session lifecycle events.
+ * - SESSION_START: Collects sensor data and closes uplink
+ * - SESSION_END: Clears sync flag and schedules next sync request
+ */
 static void pouch_event_handler(enum pouch_event event, void *ctx)
 {
     if (POUCH_EVENT_SESSION_START == event)
     {
-        pouch_uplink_entry_write(".s/sensor",
-                                 POUCH_CONTENT_TYPE_JSON,
-                                 "{\"temp\":22}",
-                                 sizeof("{\"temp\":22}") - 1,
-                                 K_FOREVER);
+        sensors_pouch_session_start();
 
+        // Now close the uplink - data has been written synchronously
         golioth_sync_to_cloud();
     }
 
     if (POUCH_EVENT_SESSION_END == event)
     {
+        sensors_pouch_session_end();
+
         service_data.data.flags = 0x00;
         bt_le_adv_update_data(ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
         k_work_schedule(&sync_request_work, K_SECONDS(CONFIG_EXAMPLE_SYNC_PERIOD_S));
@@ -122,6 +143,10 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
 
 POUCH_EVENT_HANDLER(pouch_event_handler, NULL);
 
+/**
+ * Golioth settings callback for LED control.
+ * Receives LED on/off commands from cloud and controls GPIO.
+ */
 static int led_setting_cb(bool new_value)
 {
     LOG_INF("Received LED setting: %d", (int) new_value);
@@ -136,8 +161,35 @@ static int led_setting_cb(bool new_value)
 
 GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
 
+/**
+ * Node application entry point.
+ * 1. Blinks LED to confirm boot
+ * 2. Initializes BLE GATT peripheral with Pouch service
+ * 3. Loads device certificate and private key
+ * 4. Initializes Pouch protocol stack
+ * 5. Starts BLE advertising to be discovered by gateway
+ * 6. Initializes all sensors (water, temperature, etc.)
+ * 7. Schedules periodic sync requests to upload data
+ */
 int main(void)
 {
+    // Early LED blink to confirm boot
+    if (DT_HAS_ALIAS(led0))
+    {
+        int err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        if (err == 0)
+        {
+            // Blink 3 times fast to show we're alive
+            for (int i = 0; i < 3; i++)
+            {
+                gpio_pin_set_dt(&led, 1);
+                k_msleep(100);
+                gpio_pin_set_dt(&led, 0);
+                k_msleep(100);
+            }
+        }
+    }
+
     LOG_INF("Pouch SDK Version: " STRINGIFY(APP_BUILD_VERSION));
     LOG_INF("Pouch Protocol Version: %d", POUCH_VERSION);
     LOG_INF("Pouch BLE Transport Protocol Version: %d", GOLIOTH_BLE_GATT_VERSION);
@@ -201,6 +253,13 @@ int main(void)
         {
             LOG_ERR("Could not initialize LED");
         }
+    }
+
+    // Initialize all sensors
+    err = sensors_init_all();
+    if (err)
+    {
+        LOG_WRN("Sensors init failed (err %d), continuing without them", err);
     }
 
     k_work_schedule(&sync_request_work, K_SECONDS(CONFIG_EXAMPLE_SYNC_PERIOD_S));
