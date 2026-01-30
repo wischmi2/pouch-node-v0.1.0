@@ -56,7 +56,7 @@ static void water_report_internal(void)
 
     if (pouch_session_active)
     {
-        const char *payload = water_detected ? "{\"wet\":true}" : "{\"wet\":false}";
+        const char *payload = water_detected ? "{\"water_present\":true}" : "{\"water_present\":false}";
         size_t len = strlen(payload);
 
         int err = pouch_uplink_entry_write(".s/water",
