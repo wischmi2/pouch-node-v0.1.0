@@ -53,15 +53,21 @@ static void ensure_credentials_dir(void)
 {
     struct fs_dirent dirent;
 
+    LOG_INF("Checking credentials directory: %s", CERT_DIR);
     int err = fs_stat(CERT_DIR, &dirent);
     if (err == -ENOENT)
     {
+        LOG_INF("Creating credentials directory...");
         err = fs_mkdir(CERT_DIR);
     }
 
     if (err)
     {
         LOG_ERR("Failed to create credentials dir: %d", err);
+    }
+    else
+    {
+        LOG_INF("Credentials directory OK");
     }
 }
 
@@ -85,21 +91,28 @@ static ssize_t get_file_size(const char *path)
 
 static ssize_t read_file(const char *path, uint8_t **out)
 {
+    LOG_INF("Reading file: %s", path);
+    
     // Ensure that the credentials directory exists, so the user doesn't have to
     ensure_credentials_dir();
 
+    LOG_INF("Getting file size...");
     ssize_t size = get_file_size(path);
     if (size <= 0)
     {
+        LOG_ERR("File size check failed: %d", size);
         return size;
     }
 
+    LOG_INF("File size: %d bytes, allocating buffer...", size);
     uint8_t *buf = malloc(size);
     if (buf == NULL)
     {
+        LOG_ERR("Failed to allocate %d bytes", size);
         return -ENOMEM;
     }
 
+    LOG_INF("Opening file...");
     struct fs_file_t file;
     fs_file_t_init(&file);
 
@@ -111,6 +124,7 @@ static ssize_t read_file(const char *path, uint8_t **out)
         return err;
     }
 
+    LOG_INF("Reading %d bytes...", size);
     size = fs_read(&file, buf, size);
     if (size < 0)
     {
@@ -119,7 +133,7 @@ static ssize_t read_file(const char *path, uint8_t **out)
         goto finish;
     }
 
-    LOG_DBG("Read %d bytes from %s", size, path);
+    LOG_INF("Read %d bytes from %s", size, path);
 
     *out = buf;
 
@@ -130,31 +144,46 @@ finish:
 
 psa_key_id_t load_private_key(void)
 {
+    LOG_INF("=== Loading private key ===");
     uint8_t *buf;
     ssize_t size = read_file(KEY_FILE, &buf);
     if (size < 0)
     {
+        LOG_ERR("Failed to read private key file");
         return PSA_KEY_ID_NULL;
     }
 
+    LOG_INF("Importing private key to PSA...");
     psa_key_id_t key_id = import_raw_pk(buf, size);
     free(buf);
+    
+    if (key_id == PSA_KEY_ID_NULL)
+    {
+        LOG_ERR("Failed to import private key");
+    }
+    else
+    {
+        LOG_INF("Private key loaded successfully");
+    }
+    
     return key_id;
 }
 
 int load_certificate(struct pouch_cert *cert)
 {
+    LOG_INF("=== Loading certificate ===");
     uint8_t *buf;
     ssize_t size = read_file(CERT_FILE, &buf);
     if (size < 0)
     {
+        LOG_ERR("Failed to read certificate file");
         return size;
     }
 
     cert->buffer = buf;
     cert->size = size;
 
-    LOG_DBG("Read certificate (%d bytes)", size);
+    LOG_INF("Certificate loaded successfully (%d bytes)", size);
 
     return 0;
 }

@@ -12,4 +12,6 @@ target_sources(app PRIVATE
   src/credentials.c
   src/fatal_error.c
   src/fw_update.c
+  src/sensors/sensors.c
+  src/sensors/ph2_sensor.c
 )

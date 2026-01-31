@@ -8,10 +8,14 @@
 LOG_MODULE_REGISTER(main);
 
 #include "credentials.h"
+#include "sensors/sensor.h"
+#include "sensors/ph2_sensor.h"
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/shell/shell.h>
+#include <stdlib.h>
 
 #include <pouch/pouch.h>
 #include <pouch/events.h>
@@ -103,17 +107,15 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
 {
     if (POUCH_EVENT_SESSION_START == event)
     {
-        pouch_uplink_entry_write(".s/sensor",
-                                 POUCH_CONTENT_TYPE_JSON,
-                                 "{\"temp\":22}",
-                                 sizeof("{\"temp\":22}") - 1,
-                                 K_FOREVER);
+        sensors_pouch_session_start();
 
         golioth_sync_to_cloud();
     }
 
     if (POUCH_EVENT_SESSION_END == event)
     {
+        sensors_pouch_session_end();
+
         service_data.data.flags = 0x00;
         bt_le_adv_update_data(ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
         k_work_schedule(&sync_request_work, K_SECONDS(CONFIG_EXAMPLE_SYNC_PERIOD_S));
@@ -136,12 +138,133 @@ static int led_setting_cb(bool new_value)
 
 GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
 
+/*
+ * pH2 calibration shell commands
+ *
+ * Usage:
+ *   ph2 calib-low <ph>
+ *   ph2 calib-high <ph>
+ *   ph2 calib-guided [low_ph] [high_ph]
+ */
+
+static int cmd_ph2_calib_low(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: ph2 calib-low <ph>");
+        return -EINVAL;
+    }
+
+    float ph = strtof(argv[1], NULL);
+    int err = ph2_sensor_calibrate_low(ph);
+    if (err) {
+        shell_error(sh, "Calibration failed (err %d)", err);
+    } else {
+        shell_print(sh, "Captured low-point calibration at pH=%.3f", (double)ph);
+    }
+
+    return err;
+}
+
+static int cmd_ph2_calib_high(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: ph2 calib-high <ph>");
+        return -EINVAL;
+    }
+
+    float ph = strtof(argv[1], NULL);
+    int err = ph2_sensor_calibrate_high(ph);
+    if (err) {
+        shell_error(sh, "Calibration failed (err %d)", err);
+    } else {
+        shell_print(sh, "Captured high-point calibration at pH=%.3f", (double)ph);
+    }
+
+    return err;
+}
+
+static int cmd_ph2_calib_guided(const struct shell *sh, size_t argc, char **argv)
+{
+    float low_ph = 7.0f;
+    float high_ph = 4.0f;
+
+    if (argc >= 2) {
+        low_ph = strtof(argv[1], NULL);
+    }
+    if (argc >= 3) {
+        high_ph = strtof(argv[2], NULL);
+    }
+
+    shell_print(sh, "Guided calibration (non-interactive): low=%.2f high=%.2f",
+                (double)low_ph, (double)high_ph);
+    shell_print(sh, "Make sure the probe is in the LOW buffer (%.2f) before running,",
+                (double)low_ph);
+    shell_print(sh, "then move it to the HIGH buffer (%.2f) when instructed.",
+                (double)high_ph);
+
+    int err = ph2_sensor_calibrate_low(low_ph);
+    if (err) {
+        shell_error(sh, "Low-point calibration failed (err %d)", err);
+        return err;
+    }
+
+    shell_print(sh, "Low-point captured. Now move the probe to the HIGH buffer and run the command again if needed, or use ph2 calib-high.");
+
+    /* For safety, do not automatically capture the high point here.
+     * Users can explicitly call ph2 calib-high <ph> after moving the probe.
+     */
+    return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(ph2_sub,
+    SHELL_CMD(calib-low, NULL, "Capture low-point calibration: ph2 calib-low <ph>", cmd_ph2_calib_low),
+    SHELL_CMD(calib-high, NULL, "Capture high-point calibration: ph2 calib-high <ph>", cmd_ph2_calib_high),
+    SHELL_CMD(calib-guided, NULL, "Run guided two-point calibration: ph2 calib-guided [low_ph] [high_ph]", cmd_ph2_calib_guided),
+    SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(ph2, &ph2_sub, "pH2 sensor commands", NULL);
+
 int main(void)
 {
+    // Early LED blink to confirm boot - 3 fast blinks
+    if (DT_HAS_ALIAS(led0))
+    {
+        int err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        if (err == 0)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                gpio_pin_set_dt(&led, 1);
+                k_msleep(100);
+                gpio_pin_set_dt(&led, 0);
+                k_msleep(100);
+            }
+            k_msleep(3000);  // 3 second pause
+        }
+    }
+
+    LOG_INF("=== Boot Started ===");
     LOG_INF("Pouch SDK Version: " STRINGIFY(APP_BUILD_VERSION));
     LOG_INF("Pouch Protocol Version: %d", POUCH_VERSION);
     LOG_INF("Pouch BLE Transport Protocol Version: %d", GOLIOTH_BLE_GATT_VERSION);
 
+    /* Inform the user how to perform calibration from the serial console. */
+    LOG_INF("To calibrate the pH2 sensor, use shell commands:");
+    LOG_INF("  ph2 calib-low <ph>   (e.g. ph2 calib-low 7.00)");
+    LOG_INF("  ph2 calib-high <ph>  (e.g. ph2 calib-high 4.00)");
+    LOG_INF("or start with: ph2 calib-guided 7.00 4.00");
+
+    // LED: 1 slow blink after init message
+    if (DT_HAS_ALIAS(led0))
+    {
+        gpio_pin_set_dt(&led, 1);
+        k_msleep(200);
+        gpio_pin_set_dt(&led, 0);
+        k_msleep(3000);  // 3 second pause
+    }
+
+    LOG_INF("Initializing BLE GATT peripheral...");
     int err = golioth_ble_gatt_peripheral_init();
     if (err)
     {
@@ -149,6 +272,20 @@ int main(void)
         return 0;
     }
 
+    // LED: 2 blinks after BLE peripheral init
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);  // 3 second pause
+    }
+
+    LOG_INF("Enabling Bluetooth...");
     err = bt_enable(NULL);
     if (err)
     {
@@ -158,6 +295,20 @@ int main(void)
 
     LOG_INF("Bluetooth initialized");
 
+    // LED: 3 blinks after Bluetooth init
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);  // 3 second pause
+    }
+
+    LOG_INF("Loading credentials...");
     struct pouch_config config = {0};
 
     err = load_certificate(&config.certificate);
@@ -176,6 +327,20 @@ int main(void)
 
     LOG_INF("Credentials loaded");
 
+    // LED: 4 blinks after credentials loaded
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);  // 3 second pause
+    }
+
+    LOG_INF("Initializing Pouch...");
     err = pouch_init(&config);
     if (err)
     {
@@ -185,6 +350,20 @@ int main(void)
 
     LOG_INF("Pouch initialized");
 
+    // LED: 5 blinks after Pouch initialized
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);  // 3 second pause
+    }
+
+    LOG_INF("Starting BLE advertising...");
     err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
     if (err)
     {
@@ -194,15 +373,31 @@ int main(void)
 
     LOG_INF("Advertising started");
 
+    // LED: Solid on for 1 second to show successful init
     if (DT_HAS_ALIAS(led0))
     {
         err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-        if (err < 0)
+        if (err == 0)
         {
-            LOG_ERR("Could not initialize LED");
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(1000);
+            gpio_pin_set_dt(&led, 0);
         }
     }
 
+    LOG_INF("Initializing sensors...");
+    // Initialize all sensors
+    err = sensors_init_all();
+    if (err)
+    {
+        LOG_WRN("Sensors init failed (err %d), continuing without them", err);
+    }
+    else
+    {
+        LOG_INF("Sensors initialized successfully");
+    }
+
+    LOG_INF("=== Boot Complete - Starting main loop ===");
     k_work_schedule(&sync_request_work, K_SECONDS(CONFIG_EXAMPLE_SYNC_PERIOD_S));
 
     while (1)

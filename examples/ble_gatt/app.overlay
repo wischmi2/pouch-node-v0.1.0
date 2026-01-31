@@ -17,3 +17,8 @@
 		};
 	};
 };
+
+/* Enable I2C1 for pH2 sensor (Mikroe pH2 Click with MCP3221) */
+&i2c1 {
+	status = "okay";
+};

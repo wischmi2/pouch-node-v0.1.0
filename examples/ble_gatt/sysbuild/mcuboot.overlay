@@ -6,7 +6,7 @@
 
 / {
 	chosen {
-		zephyr,code-partition = &slot0_partition;
+		zephyr,code-partition = &boot_partition;
 		nordic,pm-ext-flash = &p25q16h;
 		zephyr,console = &uart0;
         zephyr,shell-uart = &uart0;
