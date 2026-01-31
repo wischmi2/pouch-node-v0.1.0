@@ -1,5 +1,7 @@
 build/
+build_*/
 .cache
 .DS_Store
 .vscode
 twister-out*/
+*.cfg
