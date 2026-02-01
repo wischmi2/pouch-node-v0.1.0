@@ -22,6 +22,22 @@ LOG_MODULE_DECLARE(main);
 /* Period between pH reports (seconds). */
 #define PH2_REPORT_PERIOD_S 10
 
+/* Buffer size: 24 hours worth of readings at 10-second intervals */
+#define PH2_BUFFER_SIZE 144
+
+struct ph2_reading {
+    uint32_t timestamp;  /* Seconds since boot */
+    float ph;
+    uint16_t raw;
+};
+
+static struct {
+    struct ph2_reading buffer[PH2_BUFFER_SIZE];
+    uint16_t head;       /* Next write position */
+    uint16_t count;      /* Number of readings stored */
+    bool full;           /* Buffer full flag */
+} ph2_buffer = {0};
+
 static const struct device *ph2_i2c;
 static bool pouch_session_active;
 
@@ -89,6 +105,96 @@ static float ph2_from_raw(uint16_t raw)
     return approx_slope * (float)raw;
 }
 
+static void ph2_buffer_add_reading(float ph, uint16_t raw)
+{
+    struct ph2_reading *reading = &ph2_buffer.buffer[ph2_buffer.head];
+    
+    reading->timestamp = k_uptime_get_32() / 1000;  /* Seconds since boot */
+    reading->ph = ph;
+    reading->raw = raw;
+    
+    ph2_buffer.head = (ph2_buffer.head + 1) % PH2_BUFFER_SIZE;
+    
+    if (ph2_buffer.full) {
+        /* Overwrite oldest reading when buffer is full */
+        LOG_DBG("pH buffer full, overwriting oldest reading");
+    } else {
+        ph2_buffer.count++;
+        if (ph2_buffer.count == PH2_BUFFER_SIZE) {
+            ph2_buffer.full = true;
+        }
+    }
+}
+
+static void ph2_upload_buffered_readings(void)
+{
+    if (ph2_buffer.count == 0) {
+        return;  /* Nothing to send */
+    }
+    
+    /* Send readings in batches to avoid large payloads */
+    const int max_batch_size = 10;  /* Adjust based on MTU/memory constraints */
+    uint16_t start_idx = ph2_buffer.full ? ph2_buffer.head : 0;
+    uint16_t readings_to_send = ph2_buffer.count;
+    uint16_t sent = 0;
+    
+    while (sent < readings_to_send) {
+        int batch_size = MIN(max_batch_size, readings_to_send - sent);
+        char payload[512];  /* Adjust size based on batch_size */
+        int len = snprintk(payload, sizeof(payload), "{\"readings\":[");
+        
+        for (int i = 0; i < batch_size && len < sizeof(payload) - 50; i++) {
+            uint16_t idx = (start_idx + sent + i) % PH2_BUFFER_SIZE;
+            struct ph2_reading *r = &ph2_buffer.buffer[idx];
+            
+            int added = snprintk(&payload[len], sizeof(payload) - len,
+                                "%s{\"ts\":%u,\"ph\":%.3f,\"raw\":%u}",
+                                i == 0 ? "" : ",",
+                                r->timestamp,
+                                (double)r->ph,
+                                (unsigned int)r->raw);
+            
+            if (added < 0 || len + added >= sizeof(payload) - 10) {
+                LOG_WRN("pH batch payload too large, truncating");
+                break;
+            }
+            len += added;
+        }
+        
+        /* Close JSON array and object */
+        int close_len = snprintk(&payload[len], sizeof(payload) - len, 
+                                 "],\"batch\":%d,\"total\":%u}", 
+                                 sent / max_batch_size, 
+                                 (unsigned int)readings_to_send);
+        if (close_len > 0) {
+            len += close_len;
+        }
+        
+        int err = pouch_uplink_entry_write(".s/ph2_batch",
+                                           POUCH_CONTENT_TYPE_JSON,
+                                           payload,
+                                           (size_t)len,
+                                           K_NO_WAIT);
+        if (err) {
+            LOG_WRN("pH batch upload failed (err %d), will retry later", err);
+            return;  /* Don't clear buffer on failure */
+        }
+        
+        sent += batch_size;
+        LOG_DBG("Uploaded pH batch %d/%d (%d readings)", 
+                sent / max_batch_size, 
+                (readings_to_send + max_batch_size - 1) / max_batch_size,
+                batch_size);
+    }
+    
+    /* Clear buffer after successful upload */
+    ph2_buffer.count = 0;
+    ph2_buffer.head = 0;
+    ph2_buffer.full = false;
+    
+    LOG_INF("Successfully uploaded %u buffered pH readings", readings_to_send);
+}
+
 static void ph2_report_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(ph2_report_work, ph2_report_work_handler);
@@ -115,27 +221,18 @@ static void ph2_report_work_handler(struct k_work *work)
     int32_t ph_int = ph_milli / 1000;
     int32_t ph_frac = ph_milli >= 0 ? (ph_milli % 1000) : -(ph_milli % 1000);
 
-    LOG_INF("pH reading: ph=%d.%03d raw=%u",
+    LOG_INF("pH reading: ph=%d.%03d raw=%u (buffered: %u)",
             (int)ph_int,
             (int)ph_frac,
-            (unsigned int)raw);
+            (unsigned int)raw,
+            (unsigned int)ph2_buffer.count);
 
+    /* Always buffer the reading for later upload */
+    ph2_buffer_add_reading(ph, raw);
+
+    /* If connected, try to upload buffered readings */
     if (pouch_session_active) {
-        char payload[64];
-        int len = snprintk(payload, sizeof(payload),
-                           "{\"ph\":%.3f,\"raw\":%u}",
-                           (double)ph,
-                           (unsigned int)raw);
-        if (len > 0) {
-            err = pouch_uplink_entry_write(".s/ph2",
-                                           POUCH_CONTENT_TYPE_JSON,
-                                           payload,
-                                           (size_t)len,
-                                           K_NO_WAIT);
-            if (err) {
-                LOG_WRN("pH uplink failed (err %d), logging only", err);
-            }
-        }
+        ph2_upload_buffered_readings();
     }
 
     k_work_schedule(&ph2_report_work, K_SECONDS(PH2_REPORT_PERIOD_S));
@@ -162,11 +259,20 @@ int ph2_sensor_init(void)
 void ph2_sensor_pouch_session_start(void)
 {
     pouch_session_active = true;
+    LOG_INF("pH sensor: Pouch session started, uploading %u buffered readings", 
+            (unsigned int)ph2_buffer.count);
+    
+    /* Immediately try to upload any buffered readings */
+    if (ph2_buffer.count > 0) {
+        ph2_upload_buffered_readings();
+    }
 }
 
 void ph2_sensor_pouch_session_end(void)
 {
     pouch_session_active = false;
+    LOG_INF("pH sensor: Pouch session ended, %u readings buffered for next connection", 
+            (unsigned int)ph2_buffer.count);
 }
 
 int ph2_sensor_calibrate_low(float known_ph)
@@ -230,5 +336,27 @@ int ph2_sensor_guided_calibration(float low_ph, float high_ph)
     }
 
     LOG_INF("Guided pH calibration complete");
+    return 0;
+}
+
+int ph2_sensor_get_buffer_status(uint16_t *count, uint16_t *capacity, bool *full)
+{
+    if (count) *count = ph2_buffer.count;
+    if (capacity) *capacity = PH2_BUFFER_SIZE;
+    if (full) *full = ph2_buffer.full;
+    return 0;
+}
+
+int ph2_sensor_force_upload(void)
+{
+    if (!pouch_session_active) {
+        return -ENOTCONN;  /* Not connected */
+    }
+    
+    if (ph2_buffer.count == 0) {
+        return -ENODATA;   /* No data to upload */
+    }
+    
+    ph2_upload_buffered_readings();
     return 0;
 }

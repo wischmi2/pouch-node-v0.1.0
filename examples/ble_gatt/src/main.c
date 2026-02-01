@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(main);
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/shell/shell.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <pouch/pouch.h>
 #include <pouch/events.h>
@@ -110,6 +111,9 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
         sensors_pouch_session_start();
 
         golioth_sync_to_cloud();
+        
+        /* Send current pH calibration status */
+        ph2_send_calib_status();
     }
 
     if (POUCH_EVENT_SESSION_END == event)
@@ -137,6 +141,170 @@ static int led_setting_cb(bool new_value)
 }
 
 GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
+
+/*
+ * Remote pH2 calibration via Golioth Settings
+ * 
+ * The user can initiate calibration from the Golioth app/website by setting:
+ * - ph2_calibrate: "start" to begin calibration process
+ * - ph2_calib_step: "low:7.00" or "high:4.00" to capture calibration points
+ * 
+ * The device will report calibration status and instructions via stream data.
+ */
+
+enum ph2_calib_state {
+    PH2_CALIB_IDLE,
+    PH2_CALIB_WAITING_LOW,
+    PH2_CALIB_WAITING_HIGH,
+    PH2_CALIB_COMPLETE,
+    PH2_CALIB_ERROR
+};
+
+static struct {
+    enum ph2_calib_state state;
+    float target_low_ph;
+    float target_high_ph;
+    char instructions[128];
+    char status[64];
+} ph2_remote_calib = {
+    .state = PH2_CALIB_IDLE,
+    .target_low_ph = 7.0f,
+    .target_high_ph = 4.0f,
+    .instructions = "Ready for calibration",
+    .status = "idle"
+};
+
+static void ph2_send_calib_status(void)
+{
+    if (!pouch_session_active) {
+        return;
+    }
+
+    char payload[256];
+    int len = snprintk(payload, sizeof(payload),
+                       "{\"calib_state\":\"%s\",\"instructions\":\"%s\",\"low_ph\":%.2f,\"high_ph\":%.2f}",
+                       ph2_remote_calib.status,
+                       ph2_remote_calib.instructions,
+                       (double)ph2_remote_calib.target_low_ph,
+                       (double)ph2_remote_calib.target_high_ph);
+    
+    if (len > 0) {
+        int err = pouch_uplink_entry_write(".s/ph2_calib",
+                                           POUCH_CONTENT_TYPE_JSON,
+                                           payload,
+                                           (size_t)len,
+                                           K_NO_WAIT);
+        if (err) {
+            LOG_WRN("pH calibration status upload failed (err %d)", err);
+        }
+    }
+}
+
+static int ph2_calibrate_setting_cb(const char *new_value, size_t len)
+{
+    char value[32];
+    size_t copy_len = MIN(len, sizeof(value) - 1);
+    memcpy(value, new_value, copy_len);
+    value[copy_len] = '\0';
+
+    LOG_INF("Received pH calibration command: %s", value);
+
+    if (strcmp(value, "start") == 0) {
+        ph2_remote_calib.state = PH2_CALIB_WAITING_LOW;
+        snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "waiting_low");
+        snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                 "Place pH probe in %.2f buffer solution, then set ph2_calib_step to 'low:%.2f'",
+                 (double)ph2_remote_calib.target_low_ph,
+                 (double)ph2_remote_calib.target_low_ph);
+        
+        LOG_INF("pH Calibration Started: %s", ph2_remote_calib.instructions);
+        ph2_send_calib_status();
+        
+    } else if (strcmp(value, "cancel") == 0) {
+        ph2_remote_calib.state = PH2_CALIB_IDLE;
+        snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "cancelled");
+        snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                 "Calibration cancelled. Set ph2_calibrate to 'start' to begin.");
+        
+        LOG_INF("pH Calibration Cancelled");
+        ph2_send_calib_status();
+        
+    } else {
+        LOG_WRN("Unknown pH calibration command: %s", value);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+static int ph2_calib_step_setting_cb(const char *new_value, size_t len)
+{
+    char value[32];
+    size_t copy_len = MIN(len, sizeof(value) - 1);
+    memcpy(value, new_value, copy_len);
+    value[copy_len] = '\0';
+
+    LOG_INF("Received pH calibration step: %s", value);
+
+    if (strncmp(value, "low:", 4) == 0) {
+        if (ph2_remote_calib.state != PH2_CALIB_WAITING_LOW) {
+            LOG_WRN("Not waiting for low calibration point");
+            return -EINVAL;
+        }
+
+        float ph_value = strtof(&value[4], NULL);
+        int err = ph2_sensor_calibrate_low(ph_value);
+        if (err) {
+            ph2_remote_calib.state = PH2_CALIB_ERROR;
+            snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "error");
+            snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                     "Low point calibration failed. Check sensor connection.");
+            LOG_ERR("Low point calibration failed (err %d)", err);
+        } else {
+            ph2_remote_calib.state = PH2_CALIB_WAITING_HIGH;
+            snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "waiting_high");
+            snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                     "Low point captured! Now place probe in %.2f buffer, then set ph2_calib_step to 'high:%.2f'",
+                     (double)ph2_remote_calib.target_high_ph,
+                     (double)ph2_remote_calib.target_high_ph);
+            LOG_INF("Low point calibration successful: pH=%.3f", (double)ph_value);
+        }
+        ph2_send_calib_status();
+
+    } else if (strncmp(value, "high:", 5) == 0) {
+        if (ph2_remote_calib.state != PH2_CALIB_WAITING_HIGH) {
+            LOG_WRN("Not waiting for high calibration point");
+            return -EINVAL;
+        }
+
+        float ph_value = strtof(&value[5], NULL);
+        int err = ph2_sensor_calibrate_high(ph_value);
+        if (err) {
+            ph2_remote_calib.state = PH2_CALIB_ERROR;
+            snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "error");
+            snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                     "High point calibration failed. Check sensor connection.");
+            LOG_ERR("High point calibration failed (err %d)", err);
+        } else {
+            ph2_remote_calib.state = PH2_CALIB_COMPLETE;
+            snprintk(ph2_remote_calib.status, sizeof(ph2_remote_calib.status), "complete");
+            snprintk(ph2_remote_calib.instructions, sizeof(ph2_remote_calib.instructions),
+                     "Calibration complete! pH sensor is now calibrated and ready for use.");
+            LOG_INF("High point calibration successful: pH=%.3f", (double)ph_value);
+            LOG_INF("pH sensor calibration complete!");
+        }
+        ph2_send_calib_status();
+
+    } else {
+        LOG_WRN("Unknown pH calibration step: %s", value);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+GOLIOTH_SETTINGS_HANDLER(ph2_calibrate, ph2_calibrate_setting_cb);
+GOLIOTH_SETTINGS_HANDLER(ph2_calib_step, ph2_calib_step_setting_cb);
 
 /*
  * pH2 calibration shell commands
@@ -216,10 +384,59 @@ static int cmd_ph2_calib_guided(const struct shell *sh, size_t argc, char **argv
     return 0;
 }
 
+static int cmd_ph2_buffer_status(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    uint16_t count, capacity;
+    bool full;
+    
+    int err = ph2_sensor_get_buffer_status(&count, &capacity, &full);
+    if (err) {
+        shell_error(sh, "Failed to get buffer status (err %d)", err);
+        return err;
+    }
+
+    shell_print(sh, "pH Buffer Status:");
+    shell_print(sh, "  Readings stored: %u/%u", count, capacity);
+    shell_print(sh, "  Buffer full: %s", full ? "yes" : "no");
+    shell_print(sh, "  Memory usage: %u bytes", count * sizeof(struct ph2_reading));
+    
+    if (count > 0) {
+        shell_print(sh, "  Oldest reading: ~%u seconds ago", count * 10);
+    }
+
+    return 0;
+}
+
+static int cmd_ph2_upload(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int err = ph2_sensor_force_upload();
+    if (err == -ENOTCONN) {
+        shell_error(sh, "Not connected to gateway");
+        return err;
+    } else if (err == -ENODATA) {
+        shell_print(sh, "No buffered readings to upload");
+        return 0;
+    } else if (err) {
+        shell_error(sh, "Upload failed (err %d)", err);
+        return err;
+    }
+
+    shell_print(sh, "Buffered readings upload initiated");
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ph2_sub,
     SHELL_CMD(calib-low, NULL, "Capture low-point calibration: ph2 calib-low <ph>", cmd_ph2_calib_low),
     SHELL_CMD(calib-high, NULL, "Capture high-point calibration: ph2 calib-high <ph>", cmd_ph2_calib_high),
     SHELL_CMD(calib-guided, NULL, "Run guided two-point calibration: ph2 calib-guided [low_ph] [high_ph]", cmd_ph2_calib_guided),
+    SHELL_CMD(buffer, NULL, "Show buffer status: ph2 buffer", cmd_ph2_buffer_status),
+    SHELL_CMD(upload, NULL, "Force upload buffered readings: ph2 upload", cmd_ph2_upload),
     SHELL_SUBCMD_SET_END
 );
 
