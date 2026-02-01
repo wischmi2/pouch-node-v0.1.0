@@ -24,5 +24,6 @@ int ph2_sensor_guided_calibration(float low_ph, float high_ph);
 /* Buffer management functions */
 int ph2_sensor_get_buffer_status(uint16_t *count, uint16_t *capacity, bool *full);
 int ph2_sensor_force_upload(void);
+size_t ph2_sensor_get_reading_size(void);
 
 #endif /* PH2_SENSOR_H_ */

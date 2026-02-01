@@ -1,5 +1,10 @@
 build/
+**/build/
+**/build_*/
 .cache
 .DS_Store
 .vscode
 twister-out*/
+
+# OpenOCD configuration files
+*.cfg

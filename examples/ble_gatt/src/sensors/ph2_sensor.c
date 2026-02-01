@@ -360,3 +360,8 @@ int ph2_sensor_force_upload(void)
     ph2_upload_buffered_readings();
     return 0;
 }
+
+size_t ph2_sensor_get_reading_size(void)
+{
+    return sizeof(struct ph2_reading);
+}

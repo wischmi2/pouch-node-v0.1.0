@@ -28,6 +28,12 @@ LOG_MODULE_REGISTER(main);
 #include <golioth/golioth.h>
 #include <golioth/settings_callbacks.h>
 
+/* Forward declaration */
+static void ph2_send_calib_status(void);
+
+/* Global session state */
+static bool pouch_session_active = false;
+
 #include <app_version.h>
 
 /* This should be included via library path but explicitly defining here to fix build issue */
@@ -108,6 +114,7 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
 {
     if (POUCH_EVENT_SESSION_START == event)
     {
+        pouch_session_active = true;
         sensors_pouch_session_start();
 
         golioth_sync_to_cloud();
@@ -118,6 +125,7 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
 
     if (POUCH_EVENT_SESSION_END == event)
     {
+        pouch_session_active = false;
         sensors_pouch_session_end();
 
         service_data.data.flags = 0x00;
@@ -401,7 +409,7 @@ static int cmd_ph2_buffer_status(const struct shell *sh, size_t argc, char **arg
     shell_print(sh, "pH Buffer Status:");
     shell_print(sh, "  Readings stored: %u/%u", count, capacity);
     shell_print(sh, "  Buffer full: %s", full ? "yes" : "no");
-    shell_print(sh, "  Memory usage: %u bytes", count * sizeof(struct ph2_reading));
+    shell_print(sh, "  Memory usage: %u bytes", count * ph2_sensor_get_reading_size());
     
     if (count > 0) {
         shell_print(sh, "  Oldest reading: ~%u seconds ago", count * 10);
