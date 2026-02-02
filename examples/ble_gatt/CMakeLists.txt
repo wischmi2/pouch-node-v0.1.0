@@ -14,4 +14,5 @@ target_sources(app PRIVATE
   src/fw_update.c
   src/sensors/sensors.c
   src/sensors/ph2_sensor.c
+  src/sensors/temp_sensor.c
 )

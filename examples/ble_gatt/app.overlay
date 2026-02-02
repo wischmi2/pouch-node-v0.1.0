@@ -22,3 +22,27 @@
 &i2c1 {
 	status = "okay";
 };
+
+/* DS18B20 single-wire temperature sensor (pH 2 Click) */
+/ {
+	w1: w1 {
+		compatible = "zephyr,w1-gpio";
+		/* Update GPIO to match your wiring */
+		gpios = <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "okay";
+
+		ds18b20: ds18b20@0 {
+			compatible = "maxim,ds18b20";
+			reg = <0>;
+			family-code = <0x28>;
+			resolution = <12>;
+			status = "okay";
+		};
+	};
+
+	aliases {
+		temp0 = &ds18b20;
+	};
+};
