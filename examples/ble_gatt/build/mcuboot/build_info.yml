@@ -1,0 +1,54 @@
+cmake:
+  application:
+    configuration-dir: C:/Users/Brian/bootloader/mcuboot/boot/zephyr
+    source-dir: C:/Users/Brian/bootloader/mcuboot/boot/zephyr
+  board:
+    name: xiao_ble
+    path:
+     - C:/Users/Brian/zephyr/boards/seeed/xiao_ble
+    qualifiers: nrf52840
+    revision: 
+  devicetree:
+    bindings-dirs:
+     - C:/Users/Brian/zephyr/dts/bindings
+    files:
+     - C:/Users/Brian/zephyr/boards/seeed/xiao_ble/xiao_ble.dts
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild/mcuboot.overlay
+    include-dirs:
+     - C:/Users/Brian/modules/hal/nxp/dts
+     - C:/Users/Brian/bootloader/mcuboot/boot/zephyr/include
+     - C:/Users/Brian/zephyr/include
+     - C:/Users/Brian/zephyr/include/zephyr
+     - C:/Users/Brian/zephyr/dts/common
+     - C:/Users/Brian/zephyr/dts/x86
+     - C:/Users/Brian/zephyr/dts/xtensa
+     - C:/Users/Brian/zephyr/dts/sparc
+     - C:/Users/Brian/zephyr/dts/riscv
+     - C:/Users/Brian/zephyr/dts/posix
+     - C:/Users/Brian/zephyr/dts/nios2
+     - C:/Users/Brian/zephyr/dts/arm64
+     - C:/Users/Brian/zephyr/dts/arm
+     - C:/Users/Brian/zephyr/dts/arc
+     - C:/Users/Brian/zephyr/dts
+    user-files:
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild/mcuboot.overlay
+  kconfig:
+    extra-user-files:
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild/mcuboot.conf
+    files:
+     - C:/Users/Brian/zephyr/boards/seeed/xiao_ble/xiao_ble_defconfig
+     - C:/Users/Brian/bootloader/mcuboot/boot/zephyr/prj.conf
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild/mcuboot.conf
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/mcuboot/zephyr/.config.sysbuild
+    user-files:
+     - C:/Users/Brian/bootloader/mcuboot/boot/zephyr/prj.conf
+  toolchain:
+    name: zephyr
+    path: C:/Users/Brian/zephyr-sdk-0.17.4
+  vendor-specific:
+    nordic:
+      svdfile: C:/Users/Brian/modules/hal/nordic/nrfx/mdk/nrf52840.svd
+  zephyr:
+    version: 4.1.0
+    zephyr-base: C:/Users/Brian/zephyr
+version: 0.1.0

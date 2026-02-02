@@ -1,0 +1,74 @@
+menu "golioth-firmware-sdk (C:/Users/Brian/modules/lib/golioth-firmware-sdk)"
+osource "C:/Users/Brian/modules/lib/golioth-firmware-sdk/port/zephyr/Kconfig"
+config ZEPHYR_GOLIOTH_FIRMWARE_SDK_MODULE
+	bool
+	default y
+endmenu
+menu "pouch (C:/Users/Brian/pouch)"
+osource "C:/Users/Brian/pouch/Kconfig"
+config ZEPHYR_POUCH_MODULE
+	bool
+	default y
+endmenu
+menu "cmsis (C:/Users/Brian/modules/hal/cmsis)"
+osource "$(ZEPHYR_CMSIS_KCONFIG)"
+config ZEPHYR_CMSIS_MODULE
+	bool
+	default y
+endmenu
+menu "hal_nordic (C:/Users/Brian/modules/hal/nordic)"
+osource "$(ZEPHYR_HAL_NORDIC_KCONFIG)"
+config ZEPHYR_HAL_NORDIC_MODULE
+	bool
+	default y
+
+config ZEPHYR_HAL_NORDIC_MODULE_BLOBS
+	bool
+endmenu
+menu "hal_nxp (C:/Users/Brian/modules/hal/nxp)"
+osource "$(ZEPHYR_HAL_NXP_KCONFIG)"
+config ZEPHYR_HAL_NXP_MODULE
+	bool
+	default y
+	select TAINT_BLOBS
+
+config ZEPHYR_HAL_NXP_MODULE_BLOBS
+	bool
+	default y
+endmenu
+menu "littlefs (C:/Users/Brian/modules/fs/littlefs)"
+osource "$(ZEPHYR_LITTLEFS_KCONFIG)"
+config ZEPHYR_LITTLEFS_MODULE
+	bool
+	default y
+endmenu
+menu "mbedtls (C:/Users/Brian/modules/crypto/mbedtls)"
+osource "$(ZEPHYR_MBEDTLS_KCONFIG)"
+config ZEPHYR_MBEDTLS_MODULE
+	bool
+	default y
+endmenu
+config ZEPHYR_MCUBOOT_MODULE
+	bool
+	default y
+menu "picolibc (C:/Users/Brian/modules/lib/picolibc)"
+osource "C:/Users/Brian/modules/lib/picolibc/zephyr/Kconfig"
+config ZEPHYR_PICOLIBC_MODULE
+	bool
+	default y
+endmenu
+menu "segger (C:/Users/Brian/modules/debug/segger)"
+osource "$(ZEPHYR_SEGGER_KCONFIG)"
+config ZEPHYR_SEGGER_MODULE
+	bool
+	default y
+endmenu
+menu "zcbor (C:/Users/Brian/modules/lib/zcbor)"
+osource "$(ZEPHYR_ZCBOR_KCONFIG)"
+config ZEPHYR_ZCBOR_MODULE
+	bool
+	default y
+endmenu
+config ZEPHYR_NRF_HW_MODELS_MODULE
+	bool
+	default y

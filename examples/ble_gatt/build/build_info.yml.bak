@@ -1,0 +1,25 @@
+cmake:
+  board:
+    name: xiao_ble
+    path:
+     - C:/Users/Brian/zephyr/boards/seeed/xiao_ble
+    qualifiers: nrf52840
+    revision: 
+  images:
+   - name: ble_gatt
+     source-dir: C:/Users/Brian/pouch-node-1p0/examples/ble_gatt
+     type: MAIN
+   - name: mcuboot
+     source-dir: C:/Users/Brian/bootloader/mcuboot/boot/zephyr
+     type: BOOTLOADER
+  kconfig:
+    files:
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/empty.conf
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild.conf
+    user-files:
+     - C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/sysbuild.conf
+version: 0.1.0
+west:
+  command: C:\Python311\Scripts\west build -b xiao_ble --sysbuild -p
+  topdir: C:\Users\Brian
+  version: 1.4.0

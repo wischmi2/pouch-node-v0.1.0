@@ -1,0 +1,36 @@
+config ZEPHYR_GOLIOTH_FIRMWARE_SDK_MODULE
+   bool
+   default y
+config ZEPHYR_POUCH_MODULE
+   bool
+   default y
+config ZEPHYR_CMSIS_MODULE
+   bool
+   default y
+config ZEPHYR_HAL_NORDIC_MODULE
+   bool
+   default y
+config ZEPHYR_HAL_NXP_MODULE
+   bool
+   default y
+config ZEPHYR_LITTLEFS_MODULE
+   bool
+   default y
+config ZEPHYR_MBEDTLS_MODULE
+   bool
+   default y
+config ZEPHYR_MCUBOOT_MODULE
+   bool
+   default y
+config ZEPHYR_PICOLIBC_MODULE
+   bool
+   default y
+config ZEPHYR_SEGGER_MODULE
+   bool
+   default y
+config ZEPHYR_ZCBOR_MODULE
+   bool
+   default y
+config ZEPHYR_NRF_HW_MODELS_MODULE
+   bool
+   default y

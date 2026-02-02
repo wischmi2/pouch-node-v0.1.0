@@ -1,0 +1,13 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/sysbuild/images/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/sysbuild/images/bootloader/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/modules/mcuboot/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/sysbuild/images/boards/cmake_install.cmake",
+		"C:/Users/Brian/pouch-node-1p0/examples/ble_gatt/build/_sysbuild/sysbuild/images/soc/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,4 @@
+west:
+  command: C:\Python311\Scripts\west build -b seeed_xiao_nrf52840 --sysbuild -p
+  topdir: C:\Users\Brian
+  version: 1.4.0
