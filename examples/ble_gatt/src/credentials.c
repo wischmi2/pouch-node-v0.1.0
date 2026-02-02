@@ -28,7 +28,9 @@ static psa_key_id_t import_raw_pk(const uint8_t *private_key, size_t size)
     int err = mbedtls_pk_parse_key(&pk, private_key, size, NULL, 0, psa_rng_for_mbedtls, NULL);
     if (err)
     {
-        LOG_ERR("Failed to parse key: -0x%x", -err);
+        /* -0x3d00 = MBEDTLS_ERR_PK_KEY_INVALID_FORMAT: wrong encoding or key type */
+        LOG_ERR("Failed to parse key: -0x%x (key size %zu bytes)", (unsigned int)-err, size);
+        LOG_ERR("Ensure key.der is DER-encoded EC private key (SEC1 or PKCS#8), not PEM.");
         return PSA_KEY_ID_NULL;
     }
 
