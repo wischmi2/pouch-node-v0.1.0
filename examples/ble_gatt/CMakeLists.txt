@@ -4,6 +4,9 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# Include app.overlay so w1/DS18B20 and I2C nodes are merged (board overlay is applied first)
+set(EXTRA_DTC_OVERLAY_FILE ${CMAKE_CURRENT_SOURCE_DIR}/app.overlay)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ble_gatt_example)
 
