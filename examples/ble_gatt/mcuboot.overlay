@@ -33,11 +33,7 @@
 		};
 		slot0_partition: partition@c000 {
 			label = "image-0";
-			reg = <0x0000c000 0x000ec000>;
-		};
-		littlefs_partition: partition@fa000 {
-			label = "littlefs_storage";
-			reg = <0x000fa000 0x00006000>;
+			reg = <0x0000c000 0x000f4000>; /* Remainder of flash, ends at 0x100000 */
 		};
 	};
 };
@@ -55,11 +51,11 @@
 
 		slot1_partition: partition@0 {
 			label = "image-1";
-			reg = <0x00000000 0x000ee000>;
+			reg = <0x00000000 0x000ec000>;
 		};
-		storage_partition: partition@ee000 {
+		storage_partition: partition@ec000 {
 			label = "storage";
-			reg = <0x000ee000 0x00112000>;
+			reg = <0x000ec000 0x00114000>;
 		};
 	};
 };

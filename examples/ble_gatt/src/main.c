@@ -173,13 +173,14 @@ GOLIOTH_SETTINGS_HANDLER(LED, led_setting_cb);
  */
 int main(void)
 {
-    // Early LED blink to confirm boot
+    int err;
+
+    // Early LED blink to confirm boot - 3 fast blinks
     if (DT_HAS_ALIAS(led0))
     {
-        int err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+        err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
         if (err == 0)
         {
-            // Blink 3 times fast to show we're alive
             for (int i = 0; i < 3; i++)
             {
                 gpio_pin_set_dt(&led, 1);
@@ -187,20 +188,46 @@ int main(void)
                 gpio_pin_set_dt(&led, 0);
                 k_msleep(100);
             }
+            k_msleep(3000);
         }
     }
 
+    LOG_INF("=== Boot Started ===");
     LOG_INF("Pouch SDK Version: " STRINGIFY(APP_BUILD_VERSION));
     LOG_INF("Pouch Protocol Version: %d", POUCH_VERSION);
     LOG_INF("Pouch BLE Transport Protocol Version: %d", GOLIOTH_BLE_GATT_VERSION);
 
-    int err = golioth_ble_gatt_peripheral_init();
+    // LED: 1 slow blink after init message
+    if (DT_HAS_ALIAS(led0))
+    {
+        gpio_pin_set_dt(&led, 1);
+        k_msleep(200);
+        gpio_pin_set_dt(&led, 0);
+        k_msleep(3000);
+    }
+
+    LOG_INF("Initializing BLE GATT peripheral...");
+    err = golioth_ble_gatt_peripheral_init();
     if (err)
     {
         LOG_ERR("Failed to initialize Pouch BLE GATT peripheral (err %d)", err);
         return 0;
     }
 
+    // LED: 2 blinks after BLE peripheral init
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);
+    }
+
+    LOG_INF("Enabling Bluetooth...");
     err = bt_enable(NULL);
     if (err)
     {
@@ -210,6 +237,20 @@ int main(void)
 
     LOG_INF("Bluetooth initialized");
 
+    // LED: 3 blinks after Bluetooth init
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);
+    }
+
+    LOG_INF("Loading credentials...");
     struct pouch_config config = {0};
 
     err = load_certificate(&config.certificate);
@@ -228,6 +269,20 @@ int main(void)
 
     LOG_INF("Credentials loaded");
 
+    // LED: 4 blinks after credentials loaded
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);
+    }
+
+    LOG_INF("Initializing Pouch...");
     err = pouch_init(&config);
     if (err)
     {
@@ -237,6 +292,20 @@ int main(void)
 
     LOG_INF("Pouch initialized");
 
+    // LED: 5 blinks after Pouch initialized
+    if (DT_HAS_ALIAS(led0))
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            gpio_pin_set_dt(&led, 1);
+            k_msleep(100);
+            gpio_pin_set_dt(&led, 0);
+            k_msleep(100);
+        }
+        k_msleep(3000);
+    }
+
+    LOG_INF("Starting BLE advertising...");
     err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
     if (err)
     {
@@ -246,22 +315,26 @@ int main(void)
 
     LOG_INF("Advertising started");
 
+    // LED: Solid on for 1 second to show successful init
     if (DT_HAS_ALIAS(led0))
     {
-        err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-        if (err < 0)
-        {
-            LOG_ERR("Could not initialize LED");
-        }
+        gpio_pin_set_dt(&led, 1);
+        k_msleep(1000);
+        gpio_pin_set_dt(&led, 0);
     }
 
-    // Initialize all sensors
+    LOG_INF("Initializing sensors...");
     err = sensors_init_all();
     if (err)
     {
         LOG_WRN("Sensors init failed (err %d), continuing without them", err);
     }
+    else
+    {
+        LOG_INF("Sensors initialized successfully");
+    }
 
+    LOG_INF("=== Boot Complete - Starting main loop ===");
     k_work_schedule(&sync_request_work, K_SECONDS(CONFIG_EXAMPLE_SYNC_PERIOD_S));
 
     while (1)

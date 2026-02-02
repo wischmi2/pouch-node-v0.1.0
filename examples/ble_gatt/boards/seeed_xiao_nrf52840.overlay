@@ -24,7 +24,7 @@
 		};
 		slot0_partition: partition@c000 {
 			label = "image-0";
-			reg = <0x0000c000 0x000ec000>;
+			reg = <0x0000c000 0x000f4000>; /* Remainder of flash, ends at 0x100000 */
 		};
 	};
 };
