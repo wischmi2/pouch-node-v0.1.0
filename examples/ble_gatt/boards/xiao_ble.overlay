@@ -15,7 +15,7 @@
 		lfs1: lfs1 {
 			compatible = "zephyr,fstab,littlefs";
 			mount-point = "/lfs1";
-			partition = <&littlefs_partition>;
+			partition = <&storage_partition>;
 			automount;
 			read-size = <16>;
 			prog-size = <16>;
@@ -23,6 +23,18 @@
 			lookahead-size = <32>;
 			block-cycles = <512>;
 		};
+	};
+
+	water_sensor {
+		compatible = "gpio-keys";
+		water_detect: water_detect {
+			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+			label = "Water Detect INT";
+		};
+	};
+
+	aliases {
+		water-detect = &water_detect;
 	};
 };
 
@@ -40,11 +52,7 @@
 		};
 		slot0_partition: partition@c000 {
 			label = "image-0";
-			reg = <0x0000c000 0x000ee000>; /* Ends at 0xFA000 */
-		};
-		littlefs_partition: partition@fa000 {
-			label = "littlefs_storage";
-			reg = <0x000fa000 0x00006000>; /* Ends at 0x100000 */
+			reg = <0x0000c000 0x000f4000>; /* Remainder of flash, ends at 0x100000 */
 		};
 	};
 };

@@ -146,12 +146,14 @@ static void ph2_upload_buffered_readings(void)
         for (int i = 0; i < batch_size && len < sizeof(payload) - 50; i++) {
             uint16_t idx = (start_idx + sent + i) % PH2_BUFFER_SIZE;
             struct ph2_reading *r = &ph2_buffer.buffer[idx];
-            
+            int32_t ph_milli = (int32_t)(r->ph * 1000.0f);
+            int32_t ph_int = ph_milli / 1000;
+            int32_t ph_frac = ph_milli >= 0 ? (ph_milli % 1000) : -(ph_milli % 1000);
             int added = snprintk(&payload[len], sizeof(payload) - len,
-                                "%s{\"ts\":%u,\"ph\":%.3f,\"raw\":%u}",
+                                "%s{\"ts\":%u,\"ph\":%d.%03d,\"raw\":%u}",
                                 i == 0 ? "" : ",",
                                 r->timestamp,
-                                (double)r->ph,
+                                (int)ph_int, (int)ph_frac,
                                 (unsigned int)r->raw);
             
             if (added < 0 || len + added >= sizeof(payload) - 10) {
@@ -169,7 +171,7 @@ static void ph2_upload_buffered_readings(void)
         if (close_len > 0) {
             len += close_len;
         }
-        
+        LOG_INF("Golioth uplink: path=.s/ph2_batch len=%d payload=%.*s", len, len, payload);
         int err = pouch_uplink_entry_write(".s/ph2_batch",
                                            POUCH_CONTENT_TYPE_JSON,
                                            payload,
@@ -199,6 +201,35 @@ static void ph2_report_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(ph2_report_work, ph2_report_work_handler);
 
+/* Send the single most recent pH from the buffer to Golioth (.s/ph). */
+static void ph2_send_latest_to_golioth(void)
+{
+    if (ph2_buffer.count == 0) {
+        return;
+    }
+    uint16_t idx = (ph2_buffer.head + PH2_BUFFER_SIZE - 1) % PH2_BUFFER_SIZE;
+    float ph = ph2_buffer.buffer[idx].ph;
+    int32_t ph_milli = (int32_t)(ph * 1000.0f);
+    int32_t ph_int = ph_milli / 1000;
+    int32_t ph_frac = ph_milli >= 0 ? (ph_milli % 1000) : -(ph_milli % 1000);
+    char payload[32];
+    int len = snprintk(payload, sizeof(payload), "{\"ph\":%d.%03d}", (int)ph_int, (int)ph_frac);
+    if (len <= 0) {
+        return;
+    }
+    LOG_INF("Golioth uplink: path=.s/ph len=%d payload=%.*s", len, len, payload);
+    int err = pouch_uplink_entry_write(".s/ph",
+                                      POUCH_CONTENT_TYPE_JSON,
+                                      payload,
+                                      (size_t)len,
+                                      K_NO_WAIT);
+    if (err == 0) {
+        LOG_INF("pH sent to Golioth: %d.%03d (most recent in buffer)", (int)ph_int, (int)ph_frac);
+    } else {
+        LOG_WRN("pH uplink failed (err %d)", err);
+    }
+}
+
 static void ph2_report_work_handler(struct k_work *work)
 {
     ARG_UNUSED(work);
@@ -227,12 +258,12 @@ static void ph2_report_work_handler(struct k_work *work)
             (unsigned int)raw,
             (unsigned int)ph2_buffer.count);
 
-    /* Always buffer the reading for later upload */
+    /* Always buffer the reading */
     ph2_buffer_add_reading(ph, raw);
 
-    /* If connected, try to upload buffered readings */
+    /* If connected: send the single most recent pH from the buffer to Golioth */
     if (pouch_session_active) {
-        ph2_upload_buffered_readings();
+        ph2_send_latest_to_golioth();
     }
 
     k_work_schedule(&ph2_report_work, K_SECONDS(PH2_REPORT_PERIOD_S));
@@ -259,12 +290,12 @@ int ph2_sensor_init(void)
 void ph2_sensor_pouch_session_start(void)
 {
     pouch_session_active = true;
-    LOG_INF("pH sensor: Pouch session started, uploading %u buffered readings", 
+    LOG_INF("pH sensor: Pouch session started (%u buffered readings, not uploaded)",
             (unsigned int)ph2_buffer.count);
-    
-    /* Immediately try to upload any buffered readings */
+
+    /* Send the most recent buffered reading to Golioth (.s/ph) if we have any. */
     if (ph2_buffer.count > 0) {
-        ph2_upload_buffered_readings();
+        ph2_send_latest_to_golioth();
     }
 }
 
