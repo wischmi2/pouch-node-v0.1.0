@@ -23,11 +23,13 @@
 	status = "okay";
 };
 
-/* DS18B20 single-wire temperature sensor (pH 2 Click) */
+/* DS18B20 single-wire temperature sensor: data line on D0 (P0.02) on XIAO BLE.
+ * Use a 4.7kΩ pull-up from data to 3.3V. If no sensor is connected you will see
+ * "No 1-Wire slaves connected" and temp reads will fail (err -19).
+ */
 / {
 	w1: w1 {
 		compatible = "zephyr,w1-gpio";
-		/* Update GPIO to match your wiring */
 		gpios = <&gpio0 2 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
 		#address-cells = <1>;
 		#size-cells = <0>;

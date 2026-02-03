@@ -94,3 +94,13 @@ private key files, respectively.
 
 After both files have been transferred, restart the device to initialize Pouch
 with the credentials.
+
+## Sensors (XIAO BLE)
+
+- **pH (MCP3221 on I2C1)**  
+  Uses I2C1; SDA/SCL are on D4/D5 on the XIAO BLE (see board pinctrl).
+
+- **Temperature (DS18B20, 1-Wire)**  
+  Data line is on **D0 (P0.02)**. Use a 4.7 kΩ pull-up from the 1-Wire data line to 3.3 V.  
+  If no DS18B20 is connected to D0, the log will show `DS18B20: No 1-Wire slaves connected` and temperature reads will fail with err -19; pH and the rest of the app continue to run.  
+  To use a different GPIO, edit the `w1` node `gpios` in `app.overlay`.

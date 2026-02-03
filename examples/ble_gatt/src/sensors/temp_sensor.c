@@ -63,13 +63,11 @@ static void temp_send_to_golioth(const struct sensor_value *temp_c)
 
     int32_t milli;
     temp_value_to_milli(temp_c, &milli);
-    int32_t temp_int = milli / 1000;
-    int32_t temp_frac = (milli >= 0) ? (milli % 1000) : -(milli % 1000);
+    float c = (float)milli / 1000.0f;
+    int temp_f = (int)(c * 9.0f / 5.0f + 32.0f);
 
-    char payload[48];
-    int len = snprintk(payload, sizeof(payload),
-                       "{\"temp_c\":%d.%03d}",
-                       (int)temp_int, (int)temp_frac);
+    char payload[32];
+    int len = snprintk(payload, sizeof(payload), "{\"temp\":%d}", temp_f);
     if (len <= 0) {
         return;
     }
@@ -144,4 +142,15 @@ void temp_sensor_pouch_session_end(void)
 {
     pouch_session_active = false;
     LOG_INF("Temp sensor: Pouch session ended");
+}
+
+int temp_sensor_get_last(float *temp_c)
+{
+    if (!temp_c || !have_last_reading) {
+        return -ENODATA;
+    }
+    int32_t milli;
+    temp_value_to_milli(&last_temp_c, &milli);
+    *temp_c = (float)milli / 1000.0f;
+    return 0;
 }

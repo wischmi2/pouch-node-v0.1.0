@@ -26,4 +26,7 @@ int ph2_sensor_get_buffer_status(uint16_t *count, uint16_t *capacity, bool *full
 int ph2_sensor_force_upload(void);
 size_t ph2_sensor_get_reading_size(void);
 
+/** Get most recent pH from buffer; returns 0 on success, -ENODATA if no reading yet. */
+int ph2_sensor_get_last_ph(float *ph);
+
 #endif /* PH2_SENSOR_H_ */

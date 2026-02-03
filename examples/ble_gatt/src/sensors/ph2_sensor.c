@@ -378,6 +378,16 @@ int ph2_sensor_get_buffer_status(uint16_t *count, uint16_t *capacity, bool *full
     return 0;
 }
 
+int ph2_sensor_get_last_ph(float *ph)
+{
+    if (!ph || ph2_buffer.count == 0) {
+        return -ENODATA;
+    }
+    uint16_t idx = (ph2_buffer.head + PH2_BUFFER_SIZE - 1) % PH2_BUFFER_SIZE;
+    *ph = ph2_buffer.buffer[idx].ph;
+    return 0;
+}
+
 int ph2_sensor_force_upload(void)
 {
     if (!pouch_session_active) {

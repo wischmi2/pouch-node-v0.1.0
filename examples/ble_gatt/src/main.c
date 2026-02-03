@@ -10,6 +10,7 @@ LOG_MODULE_REGISTER(main);
 #include "credentials.h"
 #include "sensors/sensor.h"
 #include "sensors/ph2_sensor.h"
+#include "sensors/temp_sensor.h"
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -116,6 +117,40 @@ static void pouch_event_handler(enum pouch_event event, void *ctx)
     {
         pouch_session_active = true;
         sensors_pouch_session_start();
+
+        /* Send combined ph + temp so Golioth shows both in one place (.s/sensors) */
+        float ph = 0.0f;
+        float temp_c = 0.0f;
+        bool have_ph = (ph2_sensor_get_last_ph(&ph) == 0);
+        bool have_temp = (temp_sensor_get_last(&temp_c) == 0);
+        if (have_ph || have_temp)
+        {
+            char payload[80];
+            int len;
+            int temp_f = have_temp ? (int)(temp_c * 9.0f / 5.0f + 32.0f) : 0;
+            if (have_ph && have_temp)
+            {
+                len = snprintk(payload, sizeof(payload),
+                               "{\"ph\":%.3f,\"temp\":%d}",
+                               (double)ph, temp_f);
+            }
+            else if (have_ph)
+            {
+                len = snprintk(payload, sizeof(payload), "{\"ph\":%.3f}", (double)ph);
+            }
+            else
+            {
+                len = snprintk(payload, sizeof(payload), "{\"temp\":%d}", temp_f);
+            }
+            if (len > 0)
+            {
+                (void)pouch_uplink_entry_write(".s/sensors",
+                                               POUCH_CONTENT_TYPE_JSON,
+                                               payload,
+                                               (size_t)len,
+                                               K_NO_WAIT);
+            }
+        }
 
         golioth_sync_to_cloud();
         
