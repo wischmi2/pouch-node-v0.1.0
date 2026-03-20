@@ -7,13 +7,15 @@ on the BLE GATT transport.
 
 The example should be built with west:
 
+From the `examples/ble_gatt` directory:
+
 ```bash
-west build -b <board>
+west build --sysbuild -b xiao_nrf54l15/nrf54l15/cpuapp
 ```
 
-The `<board>` should be the Zephyr board ID of your board. The example is
-primarily developed and tested on the `nrf52840dk/nrf52840` board, but any Zephyr
-board with BLE, PSA, MbedTLS and LittleFS support should work.
+Use a Zephyr/NCS revision that includes this board (upstream Zephyr 4.3+). Other
+boards with BLE, PSA, MbedTLS and LittleFS need their own partition layout and
+`boards/<board>.overlay` fragments.
 
 ## Authentication
 

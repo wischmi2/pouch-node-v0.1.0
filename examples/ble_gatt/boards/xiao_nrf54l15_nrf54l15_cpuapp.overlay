@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2025 Golioth, Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Seeed XIAO nRF54L15: water detect on XIAO D6 (SoC gpio2 pin 8).
+ * LittleFS for credentials uses storage_partition (see app.overlay).
+ */
+
+/ {
+	water_sensor {
+		compatible = "gpio-keys";
+		water_detect: water_detect {
+			gpios = <&gpio2 8 GPIO_ACTIVE_HIGH>;
+			label = "Water Detect INT";
+		};
+	};
+
+	aliases {
+		water-detect = &water_detect;
+	};
+};

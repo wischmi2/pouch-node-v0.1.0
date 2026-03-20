@@ -1,4 +1,4 @@
-/* Water Detect 3 Click handling for XIAO nRF52840 node */
+/* Water Detect 3 Click handling for XIAO nRF54L15 (D6 / gpio2.8) */
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(main);

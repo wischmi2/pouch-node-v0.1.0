@@ -16,9 +16,11 @@ jobs:
     container: golioth/golioth-zephyr-base:0.17.0-SDK-v0
     strategy:
       matrix:
-        manifest:
-          - west.yml
-          - west-ncs.yml
+        include:
+          - manifest: west.yml
+            board: xiao_nrf54l15/nrf54l15/cpuapp
+          - manifest: west-ncs.yml
+            board: nrf54l15dk/nrf54l15/cpuapp
       fail-fast: false
     env:
       ZEPHYR_SDK_INSTALL_DIR: /opt/toolchains/zephyr-sdk-0.17.0
@@ -52,7 +54,7 @@ jobs:
       - name: Compile
         shell: bash
         run: |
-          west build --sysbuild -p -b nrf52840dk/nrf52840 pouch/examples/ble_gatt
+          west build --sysbuild -p -b ${{ matrix.board }} pouch/examples/ble_gatt
       - name: Run tests
         env:
           ZEPHYR_BASE: ${{ github.workspace }}/zephyr
