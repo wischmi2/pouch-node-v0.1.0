@@ -1,0 +1,14 @@
+/*
+ * Copyright (c) 2025 Golioth, Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * MCUboot runs from the SoC default RRAM boot_partition. Console UART comes
+ * from the board devicetree (e.g. uart20 on Seeed XIAO nRF54L15).
+ */
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};

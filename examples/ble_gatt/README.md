@@ -17,6 +17,61 @@ Use a Zephyr/NCS revision that includes this board (upstream Zephyr 4.3+). Other
 boards with BLE, PSA, MbedTLS and LittleFS need their own partition layout and
 `boards/<board>.overlay` fragments.
 
+## Flashing (XIAO nRF54L15 with XIAO Debug Mate)
+
+The XIAO nRF54L15 has SWD pins exposed for external programming. Use pyOCD
+(0.38.0 or newer) with the XIAO Debug Mate as a CMSIS-DAP probe.
+
+### 1. Hardware connection
+
+Connect the Debug Mate's SWD output to the XIAO nRF54L15:
+
+| Debug Mate | XIAO nRF54L15 |
+|------------|---------------|
+| SWDIO      | nRF54L15_SWD-IO |
+| SWCLK      | nRF54L15_SWCLK |
+| GND        | GND           |
+| 3V3 (optional) | 3V3       |
+
+Power the XIAO nRF54L15 via its USB-C port or battery.
+
+### 2. Install pyOCD (if needed)
+
+```bash
+pip install -U pyocd
+```
+
+### 3. Flash the firmware
+
+From the `examples/ble_gatt` directory, after a successful sysbuild:
+
+```bash
+# Erase chip (first time or to clear corrupt state)
+pyocd erase -t nrf54l --chip
+
+# Flash MCUboot bootloader
+pyocd load -t nrf54l build/mcuboot/zephyr/zephyr.hex
+
+# Flash signed application
+pyocd load -t nrf54l build/ble_gatt/zephyr/zephyr.signed.hex
+```
+
+On Windows PowerShell:
+
+```powershell
+pyocd erase -t nrf54l --chip
+pyocd load -t nrf54l build/mcuboot/zephyr/zephyr.hex
+pyocd load -t nrf54l build/ble_gatt/zephyr/zephyr.signed.hex
+```
+
+### Alternative: J-Link / nrfjprog
+
+If you have a J-Link probe (e.g. nRF54L15-DK or J-Link BASE Compact) instead of the Debug Mate:
+
+```bash
+west flash -d build
+```
+
 ## Authentication
 
 The Pouch BLE GATT example requires a private key and certificate to authenticate
